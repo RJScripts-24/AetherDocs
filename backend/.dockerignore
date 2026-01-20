@@ -1,0 +1,7 @@
+/tmp
+models_cache
+venv
+__pycache__
+.git
+.env
+.pytest_cache

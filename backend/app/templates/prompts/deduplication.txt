@@ -1,0 +1,2 @@
+Fuse the following contents into a single coherent summary:
+{{ content }}

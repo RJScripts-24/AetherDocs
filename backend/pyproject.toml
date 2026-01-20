@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "aetherdocs-backend"
+version = "0.1.0"
+description = "Backend for AetherDocs"
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.109.0"
+uvicorn = "^0.27.0"
+celery = "^5.3.6"
+redis = "^5.0.1"
+yt-dlp = "^2023.11.16"
+reportlab = "^4.0.9"
+python-multipart = "^0.0.9"
+pydantic = "^2.6.0"
+pydantic-settings = "^2.1.0"
+httpx = "^0.26.0"
+chromadb = "^0.4.22"
+gunicorn = "^21.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
