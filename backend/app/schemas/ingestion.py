@@ -33,6 +33,7 @@ class SourceType(str, Enum):
     PPTX = "pptx"
     VIDEO = "video"  # MP4, etc.
     AUDIO = "audio"  # MP3, WAV
+    IMAGE = "image"  # PNG, JPG, WEBP
     YOUTUBE = "youtube"
 
 # --- Input Models ---

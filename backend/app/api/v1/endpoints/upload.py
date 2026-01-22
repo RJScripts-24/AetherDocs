@@ -28,6 +28,7 @@ async def upload_file(
         source_type = SourceType.PDF # Default
         if ext in ['.mp3', '.wav']: source_type = SourceType.AUDIO
         elif ext in ['.mp4', '.mov']: source_type = SourceType.VIDEO
+        elif ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg']: source_type = SourceType.IMAGE
         elif ext == '.docx': source_type = SourceType.DOCX
         elif ext == '.pptx': source_type = SourceType.PPTX
         

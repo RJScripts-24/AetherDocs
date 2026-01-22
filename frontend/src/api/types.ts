@@ -12,7 +12,7 @@ export interface FileUploadMetadata {
     file_id: string;
     filename: string;
     file_size_mb: number;
-    source_type: 'pdf' | 'docx' | 'pptx' | 'video' | 'audio' | 'youtube';
+    source_type: 'pdf' | 'docx' | 'pptx' | 'video' | 'audio' | 'image' | 'youtube';
 }
 
 export interface TriggerSynthesisRequest {
