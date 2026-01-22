@@ -1,0 +1,256 @@
+openapi: 3.0.3
+info:
+  title: AetherDocs API
+  description: Ephemeral RAG Architecture for Automated Study Guide Generation
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local Development Server
+
+paths:
+  /session/start:
+    post:
+      summary: Start a New Session
+      description: Initializes a new ephemeral workspace and returns a Session UUID.
+      tags:
+        - Session
+      responses:
+        '200':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                    example: "123e4567-e89b-12d3-a456-426614174000"
+                  status:
+                    type: string
+                    example: "active"
+        '500':
+          description: Internal Server Error
+
+  /session/{session_id}/revoke:
+    post:
+      summary: Revoke Session
+      description: Triggers the 'Burner' protocol to wipe all data associated with the session.
+      tags:
+        - Session
+      parameters:
+        - in: path
+          name: session_id
+          schema:
+            type: string
+            format: uuid
+          required: true
+          description: The UUID of the session to revoke
+      responses:
+        '200':
+          description: Cleanup scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Session revocation scheduled"
+                  status:
+                    type: string
+                    example: "revoked"
+
+  /upload/:
+    post:
+      summary: Upload File
+      description: Uploads a document (PDF, DOCX, PPTX) or media file to the session workspace.
+      tags:
+        - Ingestion
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                file:
+                  type: string
+                  format: binary
+              required:
+                - session_id
+                - file
+      responses:
+        '200':
+          description: File accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadMetadata'
+
+  /upload/synthesize:
+    post:
+      summary: Trigger Synthesis
+      description: Starts the background pipeline to process all uploaded files and generate the Common Book.
+      tags:
+        - Ingestion
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerSynthesisRequest'
+      responses:
+        '200':
+          description: Pipeline started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ingestion pipeline queued"
+                  status:
+                    type: string
+                    example: "queued"
+
+  /chat/query:
+    post:
+      summary: RAG Chat
+      description: Ask a question to the Interactive AI Tutor based on the session context.
+      tags:
+        - Intelligence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: AI Response with citations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+
+  /chat/locator:
+    post:
+      summary: Locator Mode
+      description: Scans for all chronological mentions of a topic across video timestamps and document pages.
+      tags:
+        - Intelligence
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: List of locations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mentions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        source:
+                          type: string
+                          example: "Lecture_Video.mp4"
+                        snippet:
+                          type: string
+                          example: "...and that is how gradient descent works..."
+                        timestamp:
+                          type: string
+                          nullable: true
+                          example: "12:45"
+                        page:
+                          type: integer
+                          nullable: true
+                          example: 3
+                        score:
+                          type: number
+
+components:
+  schemas:
+    FileUploadMetadata:
+      type: object
+      properties:
+        file_id:
+          type: string
+        filename:
+          type: string
+        file_size_mb:
+          type: number
+        source_type:
+          type: string
+          enum: [pdf, docx, pptx, video, audio, youtube]
+
+    TriggerSynthesisRequest:
+      type: object
+      required:
+        - session_id
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [fast, deep]
+          default: fast
+        youtube_url:
+          type: string
+          format: uri
+          description: Optional YouTube URL to process alongside files
+
+    ChatRequest:
+      type: object
+      required:
+        - session_id
+        - query
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        query:
+          type: string
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              content:
+                type: string
+
+    ChatResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+
+    Citation:
+      type: object
+      properties:
+        source_file:
+          type: string
+        page_number:
+          type: integer
+          nullable: true
+        timestamp:
+          type: string
+          nullable: true
+        snippet:
+          type: string
+        score:
+          type: number
