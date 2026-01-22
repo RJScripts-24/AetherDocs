@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.api.api import api_router
+from app.api.v1.router import api_router
 
 # Setup logger
 # We configure it immediately so even startup errors are captured in JSON format
@@ -60,7 +60,7 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
-    Simple heartbeat endpoint for Docker/Kubernetes health probes.
+    Simple heartbeat endpoint for health monitoring.
     """
     return {
         "status": "healthy",

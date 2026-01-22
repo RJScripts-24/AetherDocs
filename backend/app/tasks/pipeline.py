@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import List, Optional
+import uuid
 from uuid import UUID
 
 from app.celery_app import celery
@@ -10,6 +11,8 @@ from app.services.storage.redis import RedisClient
 from app.services.media.downloader import YouTubeDownloader
 from app.services.media.transcriber import AudioTranscriber
 from app.services.vision.pdf_parser import PDFParser
+from app.services.vision.docx_parser import DocxParser
+from app.services.vision.pptx_parser import PptxParser
 from app.services.vector.chunker import SemanticChunker
 from app.services.vector.db import VectorDBClient
 from app.services.synthesis.generator import LLMClient
@@ -60,6 +63,8 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
     # Initialize Services
     transcriber = AudioTranscriber(model_size="large-v3" if mode == IntelligenceMode.DEEP else "distil-large-v3")
     pdf_parser = PDFParser()
+    docx_parser = DocxParser()
+    pptx_parser = PptxParser()
     chunker = SemanticChunker()
     vector_db = VectorDBClient()
     llm_client = LLMClient()
@@ -83,28 +88,57 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
             transcript_segments = transcriber.transcribe(audio_path)
             base_transcript_text = transcriber.format_as_text(transcript_segments)
             
-            # Vectorize the Transcript immediately
-            transcript_chunks = chunker.split_text(
-                base_transcript_text, 
-                source_metadata={"source": "video", "type": "audio"}
-            )
-            vector_db.add_documents(session_id, transcript_chunks)
+            # Vectorize the Transcript Segments directly to preserve timestamps
+            # This is critical for "Strict Citations" [Video 12:45]
+            video_chunks = []
+            for seg in transcript_segments:
+                # Group small segments if they are too short? 
+                # Whisper segments are usually sentence-level, which is perfect for RAG.
+                video_chunks.append({
+                    "id": str(uuid.uuid4()),
+                    "text": seg["text"],
+                    "metadata": {
+                        "source": "video",
+                        "type": "audio",
+                        "timestamp": f"{int(seg['start']//60)}:{int(seg['start']%60):02d}", # "12:45" format
+                        "start_seconds": seg['start'],
+                        "end_seconds": seg['end']
+                    }
+                })
+            
+            if video_chunks:
+                vector_db.add_documents(session_id, video_chunks)
 
-        # --- PHASE 3: DOCUMENT PARSING (PDF/VISION) ---
+        # --- PHASE 3: DOCUMENT PARSING (PDF/DOCX/PPTX) ---
         await redis.update_progress(session_id, IngestionStatus.OCR_PROCESSING, 40, "Reading Documents & Charts...")
         
         uploaded_files = storage.list_files(session_id, "uploads")
-        pdf_files = [f for f in uploaded_files if f.suffix.lower() == ".pdf"]
         
-        for pdf_file in pdf_files:
-            # Parse PDF + Vision Analysis
-            pages_content = await pdf_parser.parse(session_id, pdf_file, session_dir / "processed")
+        for file_path in uploaded_files:
+            ext = file_path.suffix.lower()
+            file_chunks = []
             
-            for page_text in pages_content:
+            # Router
+            if ext == ".pdf":
+                file_chunks = await pdf_parser.parse(session_id, file_path, session_dir / "processed")
+            elif ext == ".docx":
+                file_chunks = await docx_parser.parse(session_id, file_path, session_dir / "processed")
+            elif ext == ".pptx":
+                file_chunks = await pptx_parser.parse(session_id, file_path, session_dir / "processed")
+            else:
+                continue # Skip non-document files (video/audio handled/skipped)
+            
+            # Vectorize
+            for i, chunk_text in enumerate(file_chunks):
                 # Chunking
+                # We assume 1 chunk = 1 page/slide for PDF/PPTX from the parsers
                 chunks = chunker.split_text(
-                    page_text, 
-                    source_metadata={"source": pdf_file.name, "type": "pdf"}
+                    chunk_text, 
+                    source_metadata={
+                        "source": file_path.name, 
+                        "type": ext[1:],
+                        "page": i + 1 
+                    }
                 )
                 vector_db.add_documents(session_id, chunks)
                 
