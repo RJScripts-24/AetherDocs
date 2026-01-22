@@ -1,16 +1,20 @@
 import { useState, useRef } from 'react';
-import { FileText, X, Video, Image as ImageIcon } from 'lucide-react';
+import { FileText, X, Video, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { AetherDocsClient } from '../../api/client';
+import { toast } from 'sonner';
 
 interface TopUploadPanelProps {
   isDarkMode: boolean;
+  sessionId: string | null;
 }
 
-export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
+export function TopUploadPanel({ isDarkMode, sessionId }: TopUploadPanelProps) {
   const [activeTab, setActiveTab] = useState<'documents' | 'media' | 'images'>('documents');
-  const [documentFiles, setDocumentFiles] = useState<string[]>(['machine_learning_lecture.pdf']);
+  const [documentFiles, setDocumentFiles] = useState<string[]>([]);
   const [mediaFiles, setMediaFiles] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<string[]>([]);
-  
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+
   const documentInputRef = useRef<HTMLInputElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -21,17 +25,40 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
     { id: 'images' as const, label: 'Images' }
   ];
 
-  const handleFileSelect = (files: FileList | null, type: 'documents' | 'media' | 'images') => {
-    if (!files) return;
-    
-    const fileNames = Array.from(files).map(file => file.name);
-    
-    if (type === 'documents') {
-      setDocumentFiles(prev => [...prev, ...fileNames]);
-    } else if (type === 'media') {
-      setMediaFiles(prev => [...prev, ...fileNames]);
-    } else if (type === 'images') {
-      setImageFiles(prev => [...prev, ...fileNames]);
+  const handleFileSelect = async (files: FileList | null, type: 'documents' | 'media' | 'images') => {
+    if (!files || !sessionId) {
+      if (!sessionId) toast.error("Session not initialized yet.");
+      return;
+    }
+
+    const fileArray = Array.from(files);
+
+    for (const file of fileArray) {
+      try {
+        setUploadingFiles(prev => new Set(prev).add(file.name));
+
+        // Optimistic update
+        if (type === 'documents') setDocumentFiles(prev => [...prev, file.name]);
+        else if (type === 'media') setMediaFiles(prev => [...prev, file.name]);
+        else if (type === 'images') setImageFiles(prev => [...prev, file.name]);
+
+        await AetherDocsClient.uploadFile(sessionId, file);
+        toast.success(`Uploaded ${file.name}`);
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}`, error);
+        toast.error(`Failed to upload ${file.name}`);
+
+        // Rollback on error
+        if (type === 'documents') setDocumentFiles(prev => prev.filter(f => f !== file.name));
+        else if (type === 'media') setMediaFiles(prev => prev.filter(f => f !== file.name));
+        else if (type === 'images') setImageFiles(prev => prev.filter(f => f !== file.name));
+      } finally {
+        setUploadingFiles(prev => {
+          const next = new Set(prev);
+          next.delete(file.name);
+          return next;
+        });
+      }
     }
   };
 
@@ -64,6 +91,8 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
     <>
       {files.map((file, index) => {
         const Icon = getFileIcon(file, type);
+        const isUploading = uploadingFiles.has(file);
+
         return (
           <div
             key={index}
@@ -75,12 +104,13 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
           >
             <div className="flex items-center gap-3">
               <Icon size={18} style={{ color: '#A27B5C' }} />
-              <span 
+              <span
                 className="text-sm"
                 style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930' }}
               >
                 {file}
               </span>
+              {isUploading && <Loader2 size={14} className="animate-spin text-gray-500" />}
             </div>
             <button
               onClick={() => removeFile(index, type)}
@@ -96,7 +126,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
   );
 
   return (
-    <div 
+    <div
       className="rounded-xl p-6"
       style={{
         backgroundColor: isDarkMode ? '#3F4F44' : 'rgba(220, 215, 201, 0.4)',
@@ -151,9 +181,9 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
         <div>
           {documentFiles.length > 0 && (
             <>
-              <h3 
+              <h3
                 className="text-sm mb-3"
-                style={{ 
+                style={{
                   color: isDarkMode ? '#DCD7C9' : '#2C3930',
                   fontWeight: 500
                 }}
@@ -164,7 +194,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
             </>
           )}
 
-          <button 
+          <button
             className="text-sm mt-2 hover:opacity-80 transition-opacity"
             style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930', opacity: 0.6 }}
             onClick={() => documentInputRef.current?.click()}
@@ -176,7 +206,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
 
       {activeTab === 'media' && (
         <div>
-          <div 
+          <div
             className="rounded-lg p-8 mb-4 text-center cursor-pointer hover:opacity-80 transition-opacity"
             style={{
               border: `2px dashed ${isDarkMode ? 'rgba(162, 123, 92, 0.3)' : 'rgba(63, 79, 68, 0.3)'}`,
@@ -186,9 +216,9 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
             onDragOver={handleDragOver}
             onClick={() => mediaInputRef.current?.click()}
           >
-            <p 
+            <p
               className="text-sm"
-              style={{ 
+              style={{
                 color: isDarkMode ? '#DCD7C9' : '#2C3930',
                 opacity: 0.7
               }}
@@ -199,9 +229,9 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
 
           {mediaFiles.length > 0 && (
             <>
-              <h3 
+              <h3
                 className="text-sm mb-3"
-                style={{ 
+                style={{
                   color: isDarkMode ? '#DCD7C9' : '#2C3930',
                   fontWeight: 500
                 }}
@@ -209,7 +239,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
                 Your Uploaded files
               </h3>
               {renderFileList(mediaFiles, 'media')}
-              <button 
+              <button
                 className="text-sm mt-2 hover:opacity-80 transition-opacity"
                 style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930', opacity: 0.6 }}
                 onClick={() => mediaInputRef.current?.click()}
@@ -223,7 +253,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
 
       {activeTab === 'images' && (
         <div>
-          <div 
+          <div
             className="rounded-lg p-8 mb-4 text-center cursor-pointer hover:opacity-80 transition-opacity"
             style={{
               border: `2px dashed ${isDarkMode ? 'rgba(162, 123, 92, 0.3)' : 'rgba(63, 79, 68, 0.3)'}`,
@@ -233,9 +263,9 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
             onDragOver={handleDragOver}
             onClick={() => imageInputRef.current?.click()}
           >
-            <p 
+            <p
               className="text-sm"
-              style={{ 
+              style={{
                 color: isDarkMode ? '#DCD7C9' : '#2C3930',
                 opacity: 0.7
               }}
@@ -246,9 +276,9 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
 
           {imageFiles.length > 0 && (
             <>
-              <h3 
+              <h3
                 className="text-sm mb-3"
-                style={{ 
+                style={{
                   color: isDarkMode ? '#DCD7C9' : '#2C3930',
                   fontWeight: 500
                 }}
@@ -256,7 +286,7 @@ export function TopUploadPanel({ isDarkMode }: TopUploadPanelProps) {
                 Your Uploaded files
               </h3>
               {renderFileList(imageFiles, 'images')}
-              <button 
+              <button
                 className="text-sm mt-2 hover:opacity-80 transition-opacity"
                 style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930', opacity: 0.6 }}
                 onClick={() => imageInputRef.current?.click()}
