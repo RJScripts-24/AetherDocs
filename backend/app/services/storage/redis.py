@@ -77,12 +77,25 @@ class RedisClient:
 
     async def set_session_ttl(self, session_id: UUID):
         """
-        Refreshes the TTL for all session-related keys.
+        Creates or refreshes the session key with TTL.
         """
-        # We might have multiple keys pattern
-        # For now, mainly the progress key
         key = f"session:{session_id}:progress"
-        await self.redis.expire(key, self.ttl_seconds)
+        try:
+            # Check if key exists, if not create initial state
+            exists = await self.redis.exists(key)
+            if not exists:
+                initial_state = {
+                    "status": "active",
+                    "progress_percentage": 0,
+                    "current_step": "Session initialized",
+                    "error_message": ""
+                }
+                await self.redis.set(key, json.dumps(initial_state), ex=self.ttl_seconds)
+            else:
+                await self.redis.expire(key, self.ttl_seconds)
+        except Exception as e:
+            logger.error(f"[{session_id}] Failed to set session TTL: {e}")
+            raise
 
     async def flush_all_session_keys(self, session_id: UUID):
         """

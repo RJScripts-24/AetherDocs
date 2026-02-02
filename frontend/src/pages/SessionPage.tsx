@@ -18,6 +18,12 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
 
+  // Shared state for uploaded files
+  const [documentFiles, setDocumentFiles] = useState<string[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<string[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     const initSession = async () => {
       try {
@@ -32,6 +38,43 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
 
     initSession();
   }, []);
+
+  const handleFileUpload = async (files: FileList | null, type: 'documents' | 'media' | 'images') => {
+    if (!files || !sessionId) {
+      if (!sessionId) toast.error("Session not initialized yet.");
+      return;
+    }
+
+    const fileArray = Array.from(files);
+
+    for (const file of fileArray) {
+      try {
+        setUploadingFiles(prev => new Set(prev).add(file.name));
+
+        // Optimistic update
+        if (type === 'documents') setDocumentFiles(prev => [...prev, file.name]);
+        else if (type === 'media') setMediaFiles(prev => [...prev, file.name]);
+        else if (type === 'images') setImageFiles(prev => [...prev, file.name]);
+
+        await AetherDocsClient.uploadFile(sessionId, file);
+        toast.success(`Uploaded ${file.name}`);
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}`, error);
+        toast.error(`Failed to upload ${file.name}`);
+
+        // Rollback on error
+        if (type === 'documents') setDocumentFiles(prev => prev.filter(f => f !== file.name));
+        else if (type === 'media') setMediaFiles(prev => prev.filter(f => f !== file.name));
+        else if (type === 'images') setImageFiles(prev => prev.filter(f => f !== file.name));
+      } finally {
+        setUploadingFiles(prev => {
+          const next = new Set(prev);
+          next.delete(file.name);
+          return next;
+        });
+      }
+    }
+  };
 
   const handleSynthesize = async () => {
     if (!sessionId) {
@@ -90,10 +133,20 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
         <SessionNavbar isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
 
         <div className="mx-auto px-4 md:px-6 py-6 md:py-8" style={{ maxWidth: '1440px' }}>
-          <TopUploadPanel isDarkMode={isDarkMode} sessionId={sessionId} />
+          <TopUploadPanel
+            isDarkMode={isDarkMode}
+            documentFiles={documentFiles}
+            mediaFiles={mediaFiles}
+            imageFiles={imageFiles}
+            uploadingFiles={uploadingFiles}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <SessionInputs isDarkMode={isDarkMode} />
+            <SessionInputs
+              isDarkMode={isDarkMode}
+              sessionId={sessionId}
+              onFileUpload={handleFileUpload}
+            />
             <IntelligenceConfig isDarkMode={isDarkMode} />
           </div>
 
