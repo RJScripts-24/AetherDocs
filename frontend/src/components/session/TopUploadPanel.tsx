@@ -179,6 +179,27 @@ export function TopUploadPanel({ isDarkMode, sessionId }: TopUploadPanelProps) {
 
       {activeTab === 'documents' && (
         <div>
+          <div
+            className="rounded-lg p-8 mb-4 text-center cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              border: `2px dashed ${isDarkMode ? 'rgba(162, 123, 92, 0.3)' : 'rgba(63, 79, 68, 0.3)'}`,
+              backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.3)' : 'rgba(220, 215, 201, 0.3)'
+            }}
+            onDrop={(e) => handleDrop(e, 'documents')}
+            onDragOver={handleDragOver}
+            onClick={() => documentInputRef.current?.click()}
+          >
+            <p
+              className="text-sm"
+              style={{
+                color: isDarkMode ? '#DCD7C9' : '#2C3930',
+                opacity: 0.7
+              }}
+            >
+              Drag PDF/DOC/PPT files here or click to browse
+            </p>
+          </div>
+
           {documentFiles.length > 0 && (
             <>
               <h3
@@ -191,16 +212,15 @@ export function TopUploadPanel({ isDarkMode, sessionId }: TopUploadPanelProps) {
                 Your Uploaded files
               </h3>
               {renderFileList(documentFiles, 'documents')}
+              <button
+                className="text-sm mt-2 hover:opacity-80 transition-opacity"
+                style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930', opacity: 0.6 }}
+                onClick={() => documentInputRef.current?.click()}
+              >
+                Add another file...
+              </button>
             </>
           )}
-
-          <button
-            className="text-sm mt-2 hover:opacity-80 transition-opacity"
-            style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930', opacity: 0.6 }}
-            onClick={() => documentInputRef.current?.click()}
-          >
-            Add another file...
-          </button>
         </div>
       )}
 

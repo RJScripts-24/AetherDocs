@@ -26,6 +26,10 @@ class Settings(BaseSettings):
 
     # --- Intelligence Keys ---
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    
+    # --- Security & Logging ---
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "change_this_to_a_secure_random_string")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
     # --- The "Burner" Storage ---
     # This is the root folder where all session data lives before deletion
