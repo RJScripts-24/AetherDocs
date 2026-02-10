@@ -78,28 +78,26 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
     try:
         # --- PHASE 2: MEDIA INGESTION (VIDEO) ---
         if youtube_url:
-            await redis.update_progress(session_id, IngestionStatus.DOWNLOADING, 10, "Downloading Audio Stream...")
-            downloader = YouTubeDownloader()
-            # This is sync code (yt-dlp), but fast enough to run directly
-            audio_path = downloader.download(youtube_url, session_dir / "uploads", session_id)
+            # Use YouTube Transcript API directly (more reliable than yt-dlp)
+            await redis.update_progress(session_id, IngestionStatus.TRANSCRIBING, 20, "Fetching YouTube Transcript...")
             
-            await redis.update_progress(session_id, IngestionStatus.TRANSCRIBING, 20, "Transcribing Audio (Whisper)...")
-            # Run Whisper
-            transcript_segments = transcriber.transcribe(audio_path)
-            base_transcript_text = transcriber.format_as_text(transcript_segments)
+            from app.services.media.youtube_transcript import YouTubeTranscriptFetcher
+            transcript_fetcher = YouTubeTranscriptFetcher()
+            transcript_segments = transcript_fetcher.fetch_transcript(youtube_url)
+            base_transcript_text = " ".join([seg["text"] for seg in transcript_segments])
+            
+            logger.info(f"[{session_id}] Fetched {len(transcript_segments)} transcript segments from YouTube")
             
             # Vectorize the Transcript Segments directly to preserve timestamps
             # This is critical for "Strict Citations" [Video 12:45]
             video_chunks = []
             for seg in transcript_segments:
-                # Group small segments if they are too short? 
-                # Whisper segments are usually sentence-level, which is perfect for RAG.
                 video_chunks.append({
                     "id": str(uuid.uuid4()),
                     "text": seg["text"],
                     "metadata": {
                         "source": "video",
-                        "type": "audio",
+                        "type": "youtube",
                         "timestamp": f"{int(seg['start']//60)}:{int(seg['start']%60):02d}", # "12:45" format
                         "start_seconds": seg['start'],
                         "end_seconds": seg['end']

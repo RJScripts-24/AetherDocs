@@ -5,9 +5,11 @@ interface SessionInputsProps {
   isDarkMode: boolean;
   sessionId: string | null;
   onFileUpload: (files: FileList | null, type: 'documents' | 'media' | 'images') => Promise<void>;
+  youtubeUrl: string;
+  onYoutubeChange: (url: string) => void;
 }
 
-export function SessionInputs({ isDarkMode, sessionId, onFileUpload }: SessionInputsProps) {
+export function SessionInputs({ isDarkMode, sessionId, onFileUpload, youtubeUrl, onYoutubeChange }: SessionInputsProps) {
   const [activeTab, setActiveTab] = useState<'documents' | 'media' | 'images'>('documents');
   const [mediaExpanded, setMediaExpanded] = useState(true);
   const [imagesExpanded, setImagesExpanded] = useState(true);
@@ -174,27 +176,18 @@ export function SessionInputs({ isDarkMode, sessionId, onFileUpload }: SessionIn
 
         {mediaExpanded && (
           <div>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                placeholder="Paste YouTube URL here"
-                className="flex-1 px-3 py-2 rounded text-sm"
-                style={{
-                  backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.5)' : 'rgba(255, 255, 255, 0.5)',
-                  border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(63, 79, 68, 0.3)'}`,
-                  color: isDarkMode ? '#DCD7C9' : '#2C3930'
-                }}
-              />
-              <button
-                className="px-4 py-2 rounded text-xs"
-                style={{
-                  backgroundColor: '#A27B5C',
-                  color: '#DCD7C9'
-                }}
-              >
-                Fetch
-              </button>
-            </div>
+            <input
+              type="text"
+              value={youtubeUrl}
+              onChange={(e) => onYoutubeChange(e.target.value)}
+              placeholder="Paste YouTube URL here (e.g., https://youtu.be/...)"
+              className="w-full px-3 py-2 rounded text-sm"
+              style={{
+                backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.5)' : 'rgba(255, 255, 255, 0.5)',
+                border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(63, 79, 68, 0.3)'}`,
+                color: isDarkMode ? '#DCD7C9' : '#2C3930'
+              }}
+            />
           </div>
         )}
       </div>

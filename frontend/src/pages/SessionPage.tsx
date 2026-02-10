@@ -23,6 +23,7 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
   const [mediaFiles, setMediaFiles] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<string[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  const [youtubeUrl, setYoutubeUrl] = useState('');
 
   useEffect(() => {
     const initSession = async () => {
@@ -85,7 +86,10 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
 
     setIsSynthesizing(true);
     try {
-      await AetherDocsClient.triggerSynthesis({ session_id: sessionId });
+      await AetherDocsClient.triggerSynthesis({
+        session_id: sessionId,
+        youtube_url: youtubeUrl || undefined
+      });
       toast.success('Synthesis started!');
 
       // Poll for status
@@ -178,6 +182,8 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
               isDarkMode={isDarkMode}
               sessionId={sessionId}
               onFileUpload={handleFileUpload}
+              youtubeUrl={youtubeUrl}
+              onYoutubeChange={setYoutubeUrl}
             />
             <IntelligenceConfig isDarkMode={isDarkMode} />
           </div>
