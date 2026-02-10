@@ -46,9 +46,14 @@ class SemanticChunker:
         
         structured_chunks = []
         for i, chunk_content in enumerate(chunks):
+            # Build a descriptive chunk ID that encodes source + page for traceability
+            source_name = source_metadata.get('source', 'unknown')
+            page_num = source_metadata.get('page', 0)
+            source_id = source_metadata.get('source_id', f"{source_name}_p{page_num}")
+            
             # Create a rich chunk object
             chunk_obj = {
-                "id": f"{source_metadata.get('source_id', 'unknown')}_{i}",
+                "id": f"{source_id}_{i}",
                 "text": chunk_content,
                 "metadata": {
                     **source_metadata,

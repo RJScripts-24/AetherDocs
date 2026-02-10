@@ -5,6 +5,7 @@ import {
     LocatorResponse,
     RevokeResponse,
     SessionResponse,
+    StatusResponse,
     SynthesisResponse,
     TriggerSynthesisRequest,
 } from './types';
@@ -87,6 +88,12 @@ export class AetherDocsClient {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(request),
+        });
+    }
+
+    static async getStatus(sessionId: string): Promise<StatusResponse> {
+        return this.request<StatusResponse>(`/status/${sessionId}`, {
+            method: 'GET',
         });
     }
 }

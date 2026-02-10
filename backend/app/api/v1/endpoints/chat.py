@@ -25,7 +25,7 @@ async def query_chat(request: ChatRequest):
         # 1. Retrieval
         vector_db = VectorDBClient()
         # Retrieve top 5 chunks
-        results = vector_db.query(session_id, query_text, n_results=5)
+        results = vector_db.query(session_id, query_text, n_results=8)
         
         if not results:
             return ChatResponse(
@@ -34,6 +34,8 @@ async def query_chat(request: ChatRequest):
             )
 
         # 2. Context Construction
+        # We build citation labels EXCLUSIVELY from chunk metadata (not from text content).
+        # This ensures page numbers are always accurate regardless of how text was chunked.
         context_str = ""
         citations = []
         
@@ -43,11 +45,15 @@ async def query_chat(request: ChatRequest):
             timestamp = meta.get("timestamp") # "12:45"
             page = meta.get("page")
             
-            citation_label = f"[{source}]"
-            if timestamp: citation_label = f"[Video {timestamp}]"
-            elif page: citation_label = f"[Page {page}]"
+            # Build citation label from metadata only
+            if timestamp:
+                citation_label = f"[Video {timestamp}]"
+            elif page:
+                citation_label = f"[Source: {source}, Page {page}]"
+            else:
+                citation_label = f"[Source: {source}]"
 
-            # Format context string
+            # Format context string with metadata-derived label
             context_str += f"{citation_label}: {res['text']}\n\n"
             
             # Build citation object
@@ -64,14 +70,21 @@ async def query_chat(request: ChatRequest):
         
         system_prompt = (
             "You are AetherDocs, an ephemeral study assistant. "
-            "Answer the user's question STRICTLY based on the provided context. "
-            "If the answer is not in the context, say 'I cannot answer this based on the provided materials.' "
-            "You MUST cite your sources using the exact tags provided in context, e.g., [Video 12:45] or [Page 3]."
+            "Answer the user's question based on the provided context. "
+            "If the context contains information relevant to the question, even partially, provide a helpful answer. "
+            "Only say 'I cannot answer this based on the provided materials' if the context is completely unrelated to the question. "
+            "Each piece of context is prefixed with a citation tag like [Source: filename, Page N] or [Video MM:SS]. "
+            "You MUST cite your sources using ONLY these exact citation tags as provided. "
+            "NEVER infer, guess, or fabricate page numbers or timestamps. "
+            "When the user asks 'on which page' or 'where can I find', always reference the citation tags from the relevant context blocks. "
+            "Only use the citation tags that appear at the start of each context block."
         )
         
         user_prompt = (
             f"CONTEXT:\n{context_str}\n\n"
-            f"USER QUESTION: {query_text}"
+            f"USER QUESTION: {query_text}\n\n"
+            f"INSTRUCTIONS: Answer the question using the context above. "
+            f"If the user asks about a location (page number, timestamp), reference the citation tags from the context blocks that contain the relevant information."
         )
 
         answer = await llm.generate_text(

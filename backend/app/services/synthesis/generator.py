@@ -33,10 +33,10 @@ class LLMClient:
         """
         if mode == IntelligenceMode.DEEP:
             # High intelligence, larger context, slower
-            return "llama3-70b-8192" 
+            return "llama-3.3-70b-versatile" 
         else:
             # Ultra-fast, lower latency
-            return "llama3-8b-8192"
+            return "llama-3.1-8b-instant"
 
     async def generate_text(
         self, 

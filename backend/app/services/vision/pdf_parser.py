@@ -64,7 +64,11 @@ class PDFParser:
             # We append descriptions at the end of the page text. 
             # (Sophisticated layout analysis to insert exactly where the image was is complex; 
             # appending is sufficient for RAG context).
-            full_page_content = f"--- Page {page_num + 1} ---\n{text}\n{image_descriptions}"
+            # NOTE: We do NOT embed "--- Page N ---" markers in the text.
+            # Page numbers are tracked via metadata in the chunking pipeline.
+            # Embedding markers causes them to bleed across chunk boundaries,
+            # leading the LLM to cite incorrect page numbers.
+            full_page_content = f"{text}\n{image_descriptions}".strip()
             parsed_pages.append(full_page_content)
 
         return parsed_pages

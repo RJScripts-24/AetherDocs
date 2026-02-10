@@ -51,21 +51,22 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
       try {
         setUploadingFiles(prev => new Set(prev).add(file.name));
 
-        // Optimistic update
-        if (type === 'documents') setDocumentFiles(prev => [...prev, file.name]);
-        else if (type === 'media') setMediaFiles(prev => [...prev, file.name]);
-        else if (type === 'images') setImageFiles(prev => [...prev, file.name]);
+        // Upload file and get metadata from backend
+        const metadata = await AetherDocsClient.uploadFile(sessionId, file);
 
-        await AetherDocsClient.uploadFile(sessionId, file);
+        // Categorize based on actual file type from backend, not UI input
+        if (metadata.source_type === 'pdf' || metadata.source_type === 'docx' || metadata.source_type === 'pptx') {
+          setDocumentFiles(prev => [...prev, file.name]);
+        } else if (metadata.source_type === 'video' || metadata.source_type === 'audio') {
+          setMediaFiles(prev => [...prev, file.name]);
+        } else if (metadata.source_type === 'image') {
+          setImageFiles(prev => [...prev, file.name]);
+        }
+
         toast.success(`Uploaded ${file.name}`);
       } catch (error) {
         console.error(`Failed to upload ${file.name}`, error);
         toast.error(`Failed to upload ${file.name}`);
-
-        // Rollback on error
-        if (type === 'documents') setDocumentFiles(prev => prev.filter(f => f !== file.name));
-        else if (type === 'media') setMediaFiles(prev => prev.filter(f => f !== file.name));
-        else if (type === 'images') setImageFiles(prev => prev.filter(f => f !== file.name));
       } finally {
         setUploadingFiles(prev => {
           const next = new Set(prev);
@@ -86,11 +87,42 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
     try {
       await AetherDocsClient.triggerSynthesis({ session_id: sessionId });
       toast.success('Synthesis started!');
-      navigate('/common-book');
+
+      // Poll for status
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await AetherDocsClient.getStatus(sessionId);
+
+          if (status.status === 'completed') {
+            clearInterval(pollInterval);
+            setIsSynthesizing(false);
+            toast.success('Synthesis completed!');
+            navigate('/common-book', { state: { sessionId } });
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsSynthesizing(false);
+            toast.error(`Synthesis failed: ${status.error_message}`);
+          } else {
+            // Show progress
+            toast.info(`${status.current_step} (${status.progress_percentage}%)`, { id: 'synthesis-progress' });
+          }
+        } catch (pollError) {
+          console.error('Status poll error:', pollError);
+        }
+      }, 2000); // Poll every 2 seconds
+
+      // Timeout after 10 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isSynthesizing) {
+          setIsSynthesizing(false);
+          toast.error('Synthesis timed out. Please try again.');
+        }
+      }, 600000);
+
     } catch (error) {
       console.error('Synthesis failed:', error);
       toast.error('Failed to start synthesis.');
-    } finally {
       setIsSynthesizing(false);
     }
   };

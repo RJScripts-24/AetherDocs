@@ -1,6 +1,11 @@
-import { Menu, ChevronDown, Download, Send, MoreVertical, Moon, Sun } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Download, Send, Moon, Sun, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { PALETTE } from '../styles/palette';
 import { DIMENSIONS } from '../styles/dimensions';
+import { AetherDocsClient } from '../api/client';
+import { toast } from 'sonner';
+import type { Citation } from '../api/types';
 
 interface CommonBookPageProps {
   isDarkMode: boolean;
@@ -8,7 +13,117 @@ interface CommonBookPageProps {
   toggleTheme: () => void;
 }
 
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  citations?: Citation[];
+}
+
 export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: CommonBookPageProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const sessionId = (location.state as { sessionId?: string })?.sessionId;
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string>('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!sessionId) {
+      toast.error('No session ID found. Redirecting...');
+      navigate('/session');
+      return;
+    }
+
+    // Set PDF URL
+    setPdfUrl(`http://localhost:8000/api/v1/download/${sessionId}/commonbook`);
+  }, [sessionId, navigate]);
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || !sessionId) return;
+
+    const userMessage: Message = {
+      role: 'user',
+      content: inputValue
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const response = await AetherDocsClient.chatQuery({
+        session_id: sessionId,
+        query: inputValue
+      });
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: response.answer,
+        citations: response.citations
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      toast.error('Failed to get response from AI.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (!sessionId) return;
+
+    if (!confirm('Are you sure you want to revoke this session? All data will be permanently deleted.')) {
+      return;
+    }
+
+    try {
+      await AetherDocsClient.revokeSession(sessionId);
+      toast.success('Session revoked successfully');
+      navigate('/');
+    } catch (error) {
+      console.error('Revoke error:', error);
+      toast.error('Failed to revoke session');
+    }
+  };
+
+  const handleDownload = () => {
+    window.open(pdfUrl, '_blank');
+  };
+
+  const handleFullscreenToggle = () => {
+    const pdfContainer = document.getElementById('pdf-viewer-container');
+    if (!pdfContainer) return;
+
+    if (!isFullscreen) {
+      // Enter fullscreen
+      if (pdfContainer.requestFullscreen) {
+        pdfContainer.requestFullscreen();
+      }
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -62,20 +177,21 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
               </span>
             </div>
             <div
-              className="px-4 py-1.5 rounded border text-sm"
+              className="px-4 py-1.5 rounded border text-sm font-mono"
               style={{
                 backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.5)' : 'rgba(63, 79, 68, 0.1)',
                 borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(63, 79, 68, 0.25)',
                 color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
               }}
             >
-              sess-8392
+              {sessionId?.slice(0, 8)}...
             </div>
           </div>
 
           {/* Right - Action Buttons */}
           <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
             <button
+              onClick={handleDownload}
               className="flex items-center gap-2 px-3 md:px-4 py-2 rounded text-xs md:text-sm"
               style={{
                 backgroundColor: PALETTE.leather,
@@ -83,10 +199,11 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
               }}
             >
               <Download size={16} />
-              <span className="hidden sm:inline">Download Common Book (PDF)</span>
+              <span className="hidden sm:inline">Download PDF</span>
               <span className="sm:hidden">Download</span>
             </button>
             <button
+              onClick={handleRevoke}
               className="flex items-center gap-2 px-3 md:px-4 py-2 rounded text-xs md:text-sm"
               style={{
                 backgroundColor: PALETTE.error,
@@ -116,77 +233,67 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
         <div className="grid grid-cols-1 xl:grid-cols-[1fr_450px] gap-6 h-full">
           {/* Left Column - PDF Viewer */}
           <div className="flex flex-col gap-4">
-            {/* Header Controls */}
             <div className="flex items-center gap-3">
-              <button
-                className="flex items-center gap-3 px-4 py-2.5 rounded border text-sm"
+              <h2
+                className="text-lg"
                 style={{
-                  backgroundColor: isDarkMode ? PALETTE.moss : 'rgba(220, 215, 201, 0.6)',
-                  borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)',
-                  color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
+                  color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen,
+                  fontWeight: 500
                 }}
               >
-                <Menu size={16} />
-                <span>Generated PDF</span>
-                <ChevronDown size={16} />
-              </button>
-
-              <button
-                className="flex items-center gap-2 px-4 py-2.5 rounded border text-sm ml-auto"
-                style={{
-                  backgroundColor: isDarkMode ? PALETTE.moss : 'rgba(220, 215, 201, 0.6)',
-                  borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)',
-                  color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                }}
-              >
-                <Download size={16} />
-                <span>Download</span>
-                <ChevronDown size={16} />
-              </button>
+                Generated Common Book
+              </h2>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={handleFullscreenToggle}
+                  className="flex items-center gap-2 px-4 py-2 rounded text-sm"
+                  style={{
+                    backgroundColor: PALETTE.leather,
+                    color: PALETTE.beige
+                  }}
+                  title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                >
+                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-2 px-4 py-2 rounded text-sm"
+                  style={{
+                    backgroundColor: PALETTE.leather,
+                    color: PALETTE.beige
+                  }}
+                >
+                  <Download size={16} />
+                  <span>Download</span>
+                </button>
+              </div>
             </div>
 
-            {/* Document Card */}
+            {/* PDF iframe */}
             <div
-              className="rounded-lg border p-8 flex-1 flex items-center justify-center"
+              id="pdf-viewer-container"
+              className="rounded-lg border flex-1"
               style={{
                 backgroundColor: isDarkMode ? PALETTE.moss : 'rgba(255, 255, 255, 0.4)',
-                borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)'
+                borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)',
+                minHeight: '600px'
               }}
             >
-              <div className="text-center">
-                <div
-                  className="w-24 h-24 mx-auto mb-4 rounded-lg flex items-center justify-center"
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(162, 123, 92, 0.08)',
-                    border: `2px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(162, 123, 92, 0.15)'}`
-                  }}
-                >
-                  <svg
-                    width="48"
-                    height="48"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={isDarkMode ? PALETTE.beige : PALETTE.forestGreen}
-                    strokeWidth="1.5"
-                    opacity="0.5"
-                  >
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
+              {pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  className="w-full h-full rounded-lg"
+                  style={{ minHeight: '600px' }}
+                  title="CommonBook PDF"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.5 }}>
+                    Loading PDF...
+                  </p>
                 </div>
-                <p
-                  className="text-sm"
-                  style={{
-                    color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen,
-                    opacity: 0.6
-                  }}
-                >
-                  PDF Preview
-                </p>
-              </div>
+              )}
             </div>
           </div>
 
@@ -201,7 +308,7 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
           >
             {/* Chat Header */}
             <div
-              className="px-6 py-4 border-b flex items-center justify-between"
+              className="px-6 py-4 border-b"
               style={{
                 borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)'
               }}
@@ -213,91 +320,88 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
                   fontWeight: 500
                 }}
               >
-                AI Chat
+                AI Chat (Powered by Groq)
               </h2>
-              <button style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.6 }}>
-                <MoreVertical size={18} />
-              </button>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {/* User Message */}
-              <div>
-                <div
-                  className="inline-block px-3 py-1 rounded-full text-xs mb-2"
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(63, 79, 68, 0.15)',
-                    color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                  }}
-                >
-                  User
-                </div>
-                <div
-                  className="rounded-lg px-4 py-3 inline-block max-w-[85%]"
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(220, 215, 201, 0.8)',
-                    color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                  }}
-                >
-                  <p className="text-sm">Explain entropy in simple terms.</p>
-                </div>
-              </div>
-
-              {/* Assistant Message */}
-              <div>
-                <div
-                  className="inline-block px-3 py-1 rounded-full text-xs mb-2"
-                  style={{
-                    backgroundColor: PALETTE.leather,
-                    color: PALETTE.beige
-                  }}
-                >
-                  AetherDocs Tutor
-                </div>
-                <div
-                  className="rounded-lg px-4 py-3"
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(162, 123, 92, 0.08)',
-                    border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(162, 123, 92, 0.15)'}`,
-                    color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                  }}
-                >
-                  <p className="text-sm italic mb-3" style={{ opacity: 0.7 }}>
-                    Explain entropy in simple terms.
-                  </p>
-
-                  <p className="text-sm leading-relaxed mb-3">
-                    Entropy in information theory measures how unpredictable or random a data set is. Think of it as the "surprise" level.{' '}
-                    <span
-                      className="inline-block px-2 py-0.5 rounded text-xs mx-1"
-                      style={{
-                        backgroundColor: PALETTE.leather,
-                        color: PALETTE.beige
-                      }}
-                    >
-                      Video @ 01:25
-                    </span>
-                  </p>
-
-                  <p className="text-sm leading-relaxed mb-3">
-                    Low entropy means the data is more predictable, like flipping a coin that always lands on heads. High entropy means the data is more uncertain, like flipping a fair coin.{' '}
-                    <span
-                      className="inline-block px-2 py-0.5 rounded text-xs mx-1"
-                      style={{
-                        backgroundColor: PALETTE.leather,
-                        color: PALETTE.beige
-                      }}
-                    >
-                      Video @ 01:25
-                    </span>
-                  </p>
-
-                  <p className="text-sm leading-relaxed">
-                    In simpler terms, entropy quantifies the amount of uncertainty or disorder in a system.
+              {messages.length === 0 && (
+                <div className="text-center py-8">
+                  <p style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.5 }}>
+                    Ask me anything about your documents!
                   </p>
                 </div>
-              </div>
+              )}
+
+              {messages.map((msg, idx) => (
+                <div key={idx}>
+                  <div
+                    className="inline-block px-3 py-1 rounded-full text-xs mb-2"
+                    style={{
+                      backgroundColor: msg.role === 'user'
+                        ? (isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(63, 79, 68, 0.15)')
+                        : PALETTE.leather,
+                      color: msg.role === 'user'
+                        ? (isDarkMode ? PALETTE.beige : PALETTE.forestGreen)
+                        : PALETTE.beige
+                    }}
+                  >
+                    {msg.role === 'user' ? 'You' : 'AetherDocs AI'}
+                  </div>
+                  <div
+                    className="rounded-lg px-4 py-3"
+                    style={{
+                      backgroundColor: msg.role === 'user'
+                        ? (isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(220, 215, 201, 0.8)')
+                        : (isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(162, 123, 92, 0.08)'),
+                      border: msg.role === 'assistant'
+                        ? `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(162, 123, 92, 0.15)'}`
+                        : 'none',
+                      color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
+                    }}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs opacity-70">Sources:</p>
+                        {msg.citations
+                          .filter((cit, idx, arr) => {
+                            // Deduplicate: remove citations with same source + page
+                            const key = `${cit.source_file}_${cit.page_number}_${cit.timestamp}`;
+                            return idx === arr.findIndex(c => `${c.source_file}_${c.page_number}_${c.timestamp}` === key);
+                          })
+                          .map((cit, citIdx) => (
+                            <div
+                              key={citIdx}
+                              className="text-xs px-2 py-1 rounded"
+                              style={{
+                                backgroundColor: PALETTE.leather,
+                                color: PALETTE.beige,
+                                display: 'inline-block',
+                                marginRight: '0.5rem'
+                              }}
+                            >
+                              {cit.timestamp
+                                ? `Video @ ${cit.timestamp}`
+                                : cit.page_number
+                                  ? `${cit.source_file} — Page ${cit.page_number}`
+                                  : cit.source_file || 'Unknown source'}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="flex items-center gap-2" style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.7 }}>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span className="text-sm">AI is thinking...</span>
+                </div>
+              )}
             </div>
 
             {/* Chat Input */}
@@ -310,7 +414,11 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder="Type your question here..."
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                  placeholder="Ask a question..."
+                  disabled={isLoading}
                   className="flex-1 px-4 py-2.5 rounded border text-sm outline-none"
                   style={{
                     backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.4)' : 'rgba(220, 215, 201, 0.6)',
@@ -319,7 +427,9 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
                   }}
                 />
                 <button
-                  className="p-2.5 rounded"
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !inputValue.trim()}
+                  className="p-2.5 rounded disabled:opacity-50"
                   style={{
                     backgroundColor: PALETTE.leather,
                     color: PALETTE.beige
@@ -332,24 +442,6 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
           </div>
         </div>
       </div>
-
-      {/* Footer */}
-      <footer
-        className="py-6 text-center border-t"
-        style={{
-          borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(63, 79, 68, 0.15)'
-        }}
-      >
-        <p
-          className="text-sm"
-          style={{
-            color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen,
-            opacity: 0.5
-          }}
-        >
-          Meanwhile, the final year at Auto-deep. A Storr™ project.
-        </p>
-      </footer>
     </div>
   );
 }

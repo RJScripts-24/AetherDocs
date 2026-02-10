@@ -137,7 +137,8 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
                     source_metadata={
                         "source": file_path.name, 
                         "type": ext[1:],
-                        "page": i + 1 
+                        "page": i + 1,
+                        "source_id": f"{file_path.name}_p{i + 1}"
                     }
                 )
                 vector_db.add_documents(session_id, chunks)

@@ -59,3 +59,11 @@ export interface LocatorMention {
 export interface LocatorResponse {
     mentions: LocatorMention[];
 }
+
+export interface StatusResponse {
+    status: string;
+    progress_percentage: number;
+    current_step: string;
+    error_message: string;
+    result_pdf_url?: string;
+}
