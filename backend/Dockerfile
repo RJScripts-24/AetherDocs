@@ -8,6 +8,7 @@ ENV PYTHONUNBUFFERED 1
 RUN apt-get update && apt-get install -y \
     build-essential \
     ffmpeg \
+    redis-server \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml poetry.lock* /app/
@@ -18,4 +19,6 @@ RUN pip install poetry && \
 
 COPY . /app
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x start_hf.sh
+
+CMD ["./start_hf.sh"]

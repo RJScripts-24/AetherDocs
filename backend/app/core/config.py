@@ -1,9 +1,11 @@
 import os
 import logging
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union, List
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 # --- Load .env BEFORE the Settings class is created ---
 # This ensures os.getenv() calls in field defaults pick up
@@ -24,7 +26,21 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # --- Security & CORS ---
-    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000", "*"]
+    # Union[List[str], str] allows pydantic-settings to accept a simple string from env vars,
+    # avoiding the JSONDecodeError. The validator then parses it into a list.
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:8000", "*"]
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> Union[List[str], str]:
+        if isinstance(v, str) and not v.strip().startswith("["):
+            return [i.strip() for i in v.split(",")]
+        elif isinstance(v, str) and v.strip().startswith("["):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v.split(",")
+        return v
 
     # --- Infrastructure (Docker Service Names) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
