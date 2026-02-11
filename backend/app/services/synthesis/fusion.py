@@ -142,6 +142,8 @@ class FusionEngine:
             f"{base_text[:15000]}...\n\n" # Truncate if necessary or use RAG if huge
             "Source 2 (Deep Dives/Formulas): Integrate these missing details naturally.\n"
             f"{secondary_content}\n\n"
+            "CRITICAL INSTRUCTION: You MUST include video timestamps (e.g., [12:45]) for key definitions, "
+            "formulas, and important concepts. The base text contains these timestamps.\n"
             "Output formatted in Markdown with clear headers."
         )
         

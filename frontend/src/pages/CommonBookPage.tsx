@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Download, Send, Moon, Sun, Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { Download, Moon, Sun, Maximize2, Minimize2 } from 'lucide-react';
 import { PALETTE } from '../styles/palette';
 import { DIMENSIONS } from '../styles/dimensions';
 import { AetherDocsClient } from '../api/client';
 import { toast } from 'sonner';
-import type { Citation } from '../api/types';
+import { MetricsPanel } from '../components/session/MetricsPanel';
 
 interface CommonBookPageProps {
   isDarkMode: boolean;
@@ -13,20 +13,11 @@ interface CommonBookPageProps {
   toggleTheme: () => void;
 }
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  citations?: Citation[];
-}
-
 export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: CommonBookPageProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const sessionId = (location.state as { sessionId?: string })?.sessionId;
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string>('');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -40,39 +31,6 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
     // Set PDF URL
     setPdfUrl(`http://localhost:8000/api/v1/download/${sessionId}/commonbook`);
   }, [sessionId, navigate]);
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || !sessionId) return;
-
-    const userMessage: Message = {
-      role: 'user',
-      content: inputValue
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    setIsLoading(true);
-
-    try {
-      const response = await AetherDocsClient.chatQuery({
-        session_id: sessionId,
-        query: inputValue
-      });
-
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: response.answer,
-        citations: response.citations
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Chat error:', error);
-      toast.error('Failed to get response from AI.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleRevoke = async () => {
     if (!sessionId) return;
@@ -297,148 +255,16 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
             </div>
           </div>
 
-          {/* Right Column - AI Chat */}
+          {/* Right Column - Metrics Dashboard (Replaces Chat) */}
           <div
-            className="rounded-lg border flex flex-col"
+            className="rounded-lg border flex flex-col overflow-hidden"
             style={{
               backgroundColor: isDarkMode ? PALETTE.moss : 'rgba(255, 255, 255, 0.4)',
               borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)',
               height: 'calc(100vh - 140px)'
             }}
           >
-            {/* Chat Header */}
-            <div
-              className="px-6 py-4 border-b"
-              style={{
-                borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)'
-              }}
-            >
-              <h2
-                className="text-base"
-                style={{
-                  color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen,
-                  fontWeight: 500
-                }}
-              >
-                AI Chat (Powered by Groq)
-              </h2>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {messages.length === 0 && (
-                <div className="text-center py-8">
-                  <p style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.5 }}>
-                    Ask me anything about your documents!
-                  </p>
-                </div>
-              )}
-
-              {messages.map((msg, idx) => (
-                <div key={idx}>
-                  <div
-                    className="inline-block px-3 py-1 rounded-full text-xs mb-2"
-                    style={{
-                      backgroundColor: msg.role === 'user'
-                        ? (isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(63, 79, 68, 0.15)')
-                        : PALETTE.leather,
-                      color: msg.role === 'user'
-                        ? (isDarkMode ? PALETTE.beige : PALETTE.forestGreen)
-                        : PALETTE.beige
-                    }}
-                  >
-                    {msg.role === 'user' ? 'You' : 'AetherDocs AI'}
-                  </div>
-                  <div
-                    className="rounded-lg px-4 py-3"
-                    style={{
-                      backgroundColor: msg.role === 'user'
-                        ? (isDarkMode ? 'rgba(44, 57, 48, 0.6)' : 'rgba(220, 215, 201, 0.8)')
-                        : (isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(162, 123, 92, 0.08)'),
-                      border: msg.role === 'assistant'
-                        ? `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(162, 123, 92, 0.15)'}`
-                        : 'none',
-                      color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                    }}
-                  >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-
-                    {msg.citations && msg.citations.length > 0 && (
-                      <div className="mt-3 space-y-1">
-                        <p className="text-xs opacity-70">Sources:</p>
-                        {msg.citations
-                          .filter((cit, idx, arr) => {
-                            // Deduplicate: remove citations with same source + page
-                            const key = `${cit.source_file}_${cit.page_number}_${cit.timestamp}`;
-                            return idx === arr.findIndex(c => `${c.source_file}_${c.page_number}_${c.timestamp}` === key);
-                          })
-                          .map((cit, citIdx) => (
-                            <div
-                              key={citIdx}
-                              className="text-xs px-2 py-1 rounded"
-                              style={{
-                                backgroundColor: PALETTE.leather,
-                                color: PALETTE.beige,
-                                display: 'inline-block',
-                                marginRight: '0.5rem'
-                              }}
-                            >
-                              {cit.timestamp
-                                ? `Video @ ${cit.timestamp}`
-                                : cit.page_number
-                                  ? `${cit.source_file} — Page ${cit.page_number}`
-                                  : cit.source_file || 'Unknown source'}
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="flex items-center gap-2" style={{ color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen, opacity: 0.7 }}>
-                  <Loader2 size={16} className="animate-spin" />
-                  <span className="text-sm">AI is thinking...</span>
-                </div>
-              )}
-            </div>
-
-            {/* Chat Input */}
-            <div
-              className="px-6 py-4 border-t"
-              style={{
-                borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.15)' : 'rgba(63, 79, 68, 0.2)'
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Ask a question..."
-                  disabled={isLoading}
-                  className="flex-1 px-4 py-2.5 rounded border text-sm outline-none"
-                  style={{
-                    backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.4)' : 'rgba(220, 215, 201, 0.6)',
-                    borderColor: isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(63, 79, 68, 0.2)',
-                    color: isDarkMode ? PALETTE.beige : PALETTE.forestGreen
-                  }}
-                />
-                <button
-                  onClick={handleSendMessage}
-                  disabled={isLoading || !inputValue.trim()}
-                  className="p-2.5 rounded disabled:opacity-50"
-                  style={{
-                    backgroundColor: PALETTE.leather,
-                    color: PALETTE.beige
-                  }}
-                >
-                  <Send size={18} />
-                </button>
-              </div>
-            </div>
+            <MetricsPanel isDarkMode={isDarkMode} sessionId={sessionId} />
           </div>
         </div>
       </div>
