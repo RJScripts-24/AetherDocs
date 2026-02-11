@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # --- Infrastructure (Docker Service Names) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     
-    CHROMA_HOST: str = os.getenv("CHROMA_HOST", "chromadb")
+    CHROMA_HOST: str = os.getenv("CHROMA_HOST", "")
     CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", "8000"))
 
     # --- Intelligence Keys ---

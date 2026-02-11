@@ -4,6 +4,7 @@ import { Download, Moon, Sun, Maximize2, Minimize2 } from 'lucide-react';
 import { PALETTE } from '../styles/palette';
 import { DIMENSIONS } from '../styles/dimensions';
 import { AetherDocsClient } from '../api/client';
+import { API_CONFIG } from '../api/config';
 import { toast } from 'sonner';
 import { MetricsPanel } from '../components/session/MetricsPanel';
 
@@ -29,7 +30,7 @@ export function CommonBookPage({ isDarkMode, onNavigateHome, toggleTheme }: Comm
     }
 
     // Set PDF URL
-    setPdfUrl(`http://localhost:8000/api/v1/download/${sessionId}/commonbook`);
+    setPdfUrl(`${API_CONFIG.BASE_URL}/download/${sessionId}/commonbook`);
   }, [sessionId, navigate]);
 
   const handleRevoke = async () => {

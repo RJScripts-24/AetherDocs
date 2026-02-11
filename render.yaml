@@ -1,0 +1,57 @@
+services:
+  # --------------------------------------------------------------------------
+  # 1. Redis Instance (Task Broker & Result Backend)
+  # --------------------------------------------------------------------------
+  - type: redis
+    name: aetherdocs-cache
+    plan: free
+    ipAllowList: [] # Internal access only
+
+  # --------------------------------------------------------------------------
+  # 2. Web Service (API Gateway)
+  # --------------------------------------------------------------------------
+  - type: web
+    name: aetherdocs-api
+    env: python
+    rootDir: backend
+    plan: free
+    buildCommand: ./render-build.sh
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aetherdocs-cache
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BACKEND_CORS_ORIGINS
+        value: "*"
+      - key: TEMP_DIR
+        value: /tmp/aether_workspace
+      - key: PATH
+        value: /opt/render/ffmpeg_bin:/usr/local/bin:/usr/bin:/bin # Updated to correct home-relative path
+
+  # --------------------------------------------------------------------------
+  # 3. Background Worker (Pipeline Orchestration)
+  # --------------------------------------------------------------------------
+  - type: worker
+    name: aetherdocs-worker
+    env: python
+    rootDir: backend
+    plan: free
+    buildCommand: ./render-build.sh
+    startCommand: celery -A worker worker --loglevel=info
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: aetherdocs-cache
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TEMP_DIR
+        value: /tmp/aether_workspace
+      - key: PATH
+        value: /opt/render/ffmpeg_bin:/usr/local/bin:/usr/bin:/bin
+

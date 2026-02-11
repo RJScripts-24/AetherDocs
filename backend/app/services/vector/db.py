@@ -21,13 +21,21 @@ class VectorDBClient:
     """
 
     def __init__(self):
-        # Connect to the Chroma container defined in docker-compose
-        # host="chromadb", port=8000
-        self.client = chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT,
-            settings=Settings(allow_reset=True, anonymized_telemetry=False)
-        )
+        # Flexible connection: Use HttpClient if HOST is provided, 
+        # otherwise fallback to PersistentClient for local storage (ideal for Render/Vercel)
+        if settings.CHROMA_HOST and settings.CHROMA_HOST != "local":
+            logger.info(f"Connecting to remote ChromaDB at {settings.CHROMA_HOST}:{settings.CHROMA_PORT}")
+            self.client = chromadb.HttpClient(
+                host=settings.CHROMA_HOST,
+                port=settings.CHROMA_PORT,
+                settings=Settings(allow_reset=True, anonymized_telemetry=False)
+            )
+        else:
+            logger.info(f"Initializing Local Persistent ChromaDB at {settings.TEMP_DIR}/chroma_db")
+            self.client = chromadb.PersistentClient(
+                path=f"{settings.TEMP_DIR}/chroma_db",
+                settings=Settings(allow_reset=True, anonymized_telemetry=False)
+            )
         
         # We use a local embedding model to keep data private and free.
         # This runs inside the container (cpu/gpu).

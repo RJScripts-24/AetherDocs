@@ -9,8 +9,9 @@ import {
     SynthesisResponse,
     TriggerSynthesisRequest,
 } from './types';
+import { API_CONFIG } from './config';
 
-const BASE_URL = 'http://localhost:8000/api/v1';
+const BASE_URL = API_CONFIG.BASE_URL;
 
 export class AetherDocsClient {
     private static async request<T>(

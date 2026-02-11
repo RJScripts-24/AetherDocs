@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart, Activity, Zap, Layers, CheckCircle, Brain, Clock, FileText, Video } from 'lucide-react';
 import { PALETTE } from '../../styles/palette';
+import { API_CONFIG } from '../../api/config';
 
 interface MetricsPanelProps {
     isDarkMode: boolean;
@@ -35,7 +36,7 @@ export function MetricsPanel({ isDarkMode, sessionId }: MetricsPanelProps) {
         const fetchMetrics = async () => {
             setLoading(true);
             try {
-                const response = await fetch(`http://localhost:8000/api/v1/download/${sessionId}/metrics.json`);
+                const response = await fetch(`${API_CONFIG.BASE_URL}/download/${sessionId}/metrics.json`);
                 if (response.ok) {
                     const data = await response.json();
                     setMetrics(data);
