@@ -64,7 +64,7 @@ class FusionEngine:
         # We process chunks in parallel batches to speed up the "Set Difference" operation.
         unique_insights = []
         
-        batch_size = 5 # Process 5 chunks at a time to respect Rate Limits
+        batch_size = 2 # Process 2 chunks at a time to respect Groq free-tier Rate Limits
         for i in range(0, len(pdf_text_chunks), batch_size):
             batch = pdf_text_chunks[i : i + batch_size]
             tasks = [
@@ -81,6 +81,9 @@ class FusionEngine:
                     unique_insights.append(res)
             
             logger.debug(f"[{session_id}] Processed batch {i}-{i+batch_size}. Found {len(unique_insights)} unique points so far.")
+            
+            # Small delay between batches to avoid rate limits
+            await asyncio.sleep(2)
 
         # Step 4: Final Synthesis
         # We weave the Base Layer and the Unique Insights into a coherent structure.
@@ -150,5 +153,6 @@ class FusionEngine:
         return await self.llm.generate_text(
             system_prompt="You are a specialized academic synthesizer.",
             user_prompt=prompt,
-            mode=mode
+            mode=mode,
+            max_tokens=8192  # Larger output to cover ALL source documents
         )

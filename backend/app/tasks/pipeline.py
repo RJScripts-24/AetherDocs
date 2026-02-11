@@ -18,6 +18,7 @@ from app.services.vector.db import VectorDBClient
 from app.services.synthesis.generator import LLMClient
 from app.services.synthesis.fusion import FusionEngine
 from app.services.synthesis.pdf_writer import PDFGenerator
+from app.services.vision.describer import ImageDescriber
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -136,12 +137,31 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
             raise RuntimeError("No content found to synthesize! Please upload a PDF or Video.")
         
         # Image-first Processing (JPEG, PNG, WEBP, SVG)
+        image_describer = ImageDescriber()
         image_files = [f for f in uploaded_files if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp', '.svg']]
         for img_path in image_files:
-            logger.info(f"[{session_id}] Processing image: {img_path.name}")
-            # Placeholder for actual image processing logic
-            # For now, we'll just log it and move on.
-            # In a real scenario, this would involve OCR or image captioning.
+            logger.info(f"[{session_id}] Processing image with Llama Vision: {img_path.name}")
+            try:
+                description = await image_describer.describe_image(img_path)
+                logger.info(f"[{session_id}] Image description for {img_path.name}: {description[:100]}...")
+                
+                # Vectorize the image description
+                image_chunks = chunker.split_text(
+                    description,
+                    source_metadata={
+                        "source": img_path.name,
+                        "type": "image",
+                        "page": 1,
+                        "source_id": f"{img_path.name}_vision"
+                    }
+                )
+                vector_db.add_documents(session_id, image_chunks)
+                
+                # Also feed into secondary text for fusion synthesis
+                secondary_text_chunks.append(description)
+                
+            except Exception as img_err:
+                logger.error(f"[{session_id}] Image analysis failed for {img_path.name}: {img_err}")
         
         for file_path in uploaded_files:
             ext = file_path.suffix.lower()

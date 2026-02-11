@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import os
 from typing import Optional
 from groq import AsyncGroq, RateLimitError, APIError
@@ -48,40 +49,46 @@ class LLMClient:
     ) -> str:
         """
         Generates text using the specified Llama-3 model.
+        Includes exponential backoff for rate limits.
         """
         model = self._get_model_name(mode)
+        max_retries = 5
         
-        try:
-            chat_completion = await self.client.chat.completions.create(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=1,
-                stop=None,
-                stream=False,
-            )
-            
-            return chat_completion.choices[0].message.content
+        for attempt in range(max_retries):
+            try:
+                chat_completion = await self.client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": system_prompt,
+                        },
+                        {
+                            "role": "user",
+                            "content": user_prompt,
+                        }
+                    ],
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    top_p=1,
+                    stop=None,
+                    stream=False,
+                )
+                
+                return chat_completion.choices[0].message.content
 
-        except RateLimitError:
-            logger.error("Groq Rate Limit Reached. Retrying...")
-            # In a real prod env, we'd add exponential backoff here.
-            # For now, we return a fallback to prevent crash.
-            return "[Error: System Overload. Please retry in 10 seconds.]"
-            
-        except APIError as e:
-            logger.error(f"Groq API Error: {e}")
-            raise RuntimeError(f"LLM Generation failed: {e}")
+            except RateLimitError:
+                wait_time = (2 ** attempt) * 2  # 2s, 4s, 8s, 16s, 32s
+                logger.warning(f"Groq Rate Limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
+                await asyncio.sleep(wait_time)
+                
+            except APIError as e:
+                logger.error(f"Groq API Error: {e}")
+                raise RuntimeError(f"LLM Generation failed: {e}")
+        
+        # All retries exhausted
+        logger.error("Groq Rate Limit: All retries exhausted. Returning empty.")
+        return ""
 
     async def generate_summary(self, text: str, mode: IntelligenceMode) -> str:
         """
