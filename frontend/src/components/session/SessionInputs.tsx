@@ -5,22 +5,20 @@ interface SessionInputsProps {
   isDarkMode: boolean;
   sessionId: string | null;
   onFileUpload: (files: FileList | null, type: 'documents' | 'media' | 'images') => Promise<void>;
-  youtubeUrl: string;
-  onYoutubeChange: (url: string) => void;
+  onAddYoutubeUrl: (url: string) => void;
 }
 
-export function SessionInputs({ isDarkMode, sessionId, onFileUpload, youtubeUrl, onYoutubeChange }: SessionInputsProps) {
+export function SessionInputs({ isDarkMode, sessionId, onFileUpload, onAddYoutubeUrl }: SessionInputsProps) {
   const [activeTab, setActiveTab] = useState<'documents' | 'media' | 'images'>('documents');
   const [mediaExpanded, setMediaExpanded] = useState(true);
   const [imagesExpanded, setImagesExpanded] = useState(true);
+  const [inputValue, setInputValue] = useState('');
 
   const documentInputRef = useRef<HTMLInputElement>(null);
-  const mediaInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const tabs = [
     { id: 'documents' as const, label: 'Documents' },
-    { id: 'media' as const, label: 'Media' },
     { id: 'images' as const, label: 'Images' }
   ];
 
@@ -63,14 +61,7 @@ export function SessionInputs({ isDarkMode, sessionId, onFileUpload, youtubeUrl,
         onChange={(e) => onFileUpload(e.target.files, 'documents')}
         className="hidden"
       />
-      <input
-        ref={mediaInputRef}
-        type="file"
-        multiple
-        accept="audio/*,video/*,.mp3,.mp4"
-        onChange={(e) => onFileUpload(e.target.files, 'media')}
-        className="hidden"
-      />
+
       <input
         ref={imageInputRef}
         type="file"
@@ -117,22 +108,7 @@ export function SessionInputs({ isDarkMode, sessionId, onFileUpload, youtubeUrl,
           </div>
         )}
 
-        {activeTab === 'media' && (
-          <div
-            className="rounded-lg p-8 text-center text-sm cursor-pointer hover:opacity-80 transition-opacity"
-            style={{
-              border: `2px dashed ${isDarkMode ? 'rgba(162, 123, 92, 0.3)' : 'rgba(63, 79, 68, 0.3)'}`,
-              backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.3)' : 'rgba(220, 215, 201, 0.3)',
-              color: isDarkMode ? '#DCD7C9' : '#2C3930',
-              opacity: 0.7
-            }}
-            onDrop={(e) => handleDrop(e, 'media')}
-            onDragOver={handleDragOver}
-            onClick={() => mediaInputRef.current?.click()}
-          >
-            Drag MP3/MP4 files here or click to browse
-          </div>
-        )}
+
 
         {activeTab === 'images' && (
           <div
@@ -175,19 +151,38 @@ export function SessionInputs({ isDarkMode, sessionId, onFileUpload, youtubeUrl,
         </button>
 
         {mediaExpanded && (
-          <div>
+          <div className="flex gap-2">
             <input
               type="text"
-              value={youtubeUrl}
-              onChange={(e) => onYoutubeChange(e.target.value)}
-              placeholder="Paste YouTube URL here (e.g., https://youtu.be/...)"
-              className="w-full px-3 py-2 rounded text-sm"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Paste YouTube URL here..."
+              className="flex-1 px-3 py-2 rounded text-sm"
               style={{
                 backgroundColor: isDarkMode ? 'rgba(44, 57, 48, 0.5)' : 'rgba(255, 255, 255, 0.5)',
                 border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(63, 79, 68, 0.3)'}`,
                 color: isDarkMode ? '#DCD7C9' : '#2C3930'
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onAddYoutubeUrl(inputValue);
+                  setInputValue('');
+                }
+              }}
             />
+            <button
+              onClick={() => {
+                onAddYoutubeUrl(inputValue);
+                setInputValue('');
+              }}
+              className="px-4 py-2 rounded text-sm font-medium transition-colors"
+              style={{
+                backgroundColor: '#A27B5C',
+                color: '#DCD7C9'
+              }}
+            >
+              Add
+            </button>
           </div>
         )}
       </div>

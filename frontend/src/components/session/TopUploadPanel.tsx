@@ -6,6 +6,8 @@ interface TopUploadPanelProps {
   documentFiles: string[];
   mediaFiles: string[];
   imageFiles: string[];
+  youtubeUrls: string[];
+  onRemoveYoutubeUrl: (url: string) => void;
   uploadingFiles: Set<string>;
 }
 
@@ -14,14 +16,16 @@ export function TopUploadPanel({
   documentFiles,
   mediaFiles,
   imageFiles,
+  youtubeUrls,
+  onRemoveYoutubeUrl,
   uploadingFiles
 }: TopUploadPanelProps) {
-  const [activeTab, setActiveTab] = useState<'documents' | 'media' | 'images'>('documents');
+  const [activeTab, setActiveTab] = useState<'documents' | 'media' | 'images' | 'links'>('documents');
 
   const tabs = [
     { id: 'documents' as const, label: 'Documents' },
-    { id: 'media' as const, label: 'Media' },
-    { id: 'images' as const, label: 'Images' }
+    { id: 'images' as const, label: 'Images' },
+    { id: 'links' as const, label: 'Links' }
   ];
 
   const getFileIcon = (fileName: string, type: string) => {
@@ -115,23 +119,7 @@ export function TopUploadPanel({
         </div>
       )}
 
-      {activeTab === 'media' && (
-        <div>
-          {mediaFiles.length > 0 ? (
-            renderFileList(mediaFiles, 'media')
-          ) : (
-            <p
-              className="text-sm text-center py-8"
-              style={{
-                color: isDarkMode ? '#DCD7C9' : '#2C3930',
-                opacity: 0.5
-              }}
-            >
-              No media files uploaded yet
-            </p>
-          )}
-        </div>
-      )}
+
 
       {activeTab === 'images' && (
         <div>
@@ -146,6 +134,49 @@ export function TopUploadPanel({
               }}
             >
               No images uploaded yet
+            </p>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'links' && (
+        <div>
+          {youtubeUrls.length > 0 ? (
+            youtubeUrls.map((url, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between px-4 py-3 rounded-lg mb-2"
+                style={{
+                  backgroundColor: isDarkMode ? 'rgba(162, 123, 92, 0.1)' : 'rgba(162, 123, 92, 0.15)',
+                  border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.2)' : 'rgba(162, 123, 92, 0.25)'}`
+                }}
+              >
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <Video size={18} style={{ color: '#A27B5C', flexShrink: 0 }} />
+                  <span
+                    className="text-sm truncate"
+                    style={{ color: isDarkMode ? '#DCD7C9' : '#2C3930' }}
+                  >
+                    {url}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onRemoveYoutubeUrl(url)}
+                  className="p-1 hover:bg-red-500/10 rounded-full transition-colors group"
+                >
+                  <X size={16} className="text-gray-400 group-hover:text-red-500" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p
+              className="text-sm text-center py-8"
+              style={{
+                color: isDarkMode ? '#DCD7C9' : '#2C3930',
+                opacity: 0.5
+              }}
+            >
+              No YouTube links added yet
             </p>
           )}
         </div>

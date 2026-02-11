@@ -74,7 +74,7 @@ class TriggerSynthesisRequest(BaseModel):
         default=IntelligenceMode.FAST,
         description="Selects the model complexity (8b vs 70b)"
     )
-    youtube_url: Optional[HttpUrl] = Field(None, description="Optional YouTube URL to process")
+    youtube_urls: List[HttpUrl] = Field(default=[], description="List of YouTube URLs to process")
 
 # --- Status/Response Models ---
 

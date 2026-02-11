@@ -18,7 +18,7 @@ export interface FileUploadMetadata {
 export interface TriggerSynthesisRequest {
     session_id: string;
     mode?: 'fast' | 'deep';
-    youtube_url?: string;
+    youtube_urls?: string[];
 }
 
 export interface SynthesisResponse {

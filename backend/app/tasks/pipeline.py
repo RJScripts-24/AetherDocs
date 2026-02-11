@@ -23,7 +23,7 @@ from app.services.synthesis.pdf_writer import PDFGenerator
 logger = logging.getLogger(__name__)
 
 @celery.task(bind=True, name="tasks.pipeline.run_ingestion")
-def run_ingestion_pipeline(self, session_id_str: str, mode_str: str, youtube_url: Optional[str] = None):
+def run_ingestion_pipeline(self, session_id_str: str, mode_str: str, youtube_urls: Optional[List[str]] = None):
     """
     The "Black Box" Pipeline.
     Executed by a Celery Worker (separate process from API).
@@ -39,17 +39,21 @@ def run_ingestion_pipeline(self, session_id_str: str, mode_str: str, youtube_url
     session_id = UUID(session_id_str)
     mode = IntelligenceMode(mode_str)
     
+    # Ensure youtube_urls is a list
+    if youtube_urls is None:
+        youtube_urls = []
+
     # We run the async logic in a blocking call since Celery is sync
     try:
         asyncio.run(
-            _execute_pipeline_async(session_id, mode, youtube_url)
+            _execute_pipeline_async(session_id, mode, youtube_urls)
         )
     except Exception as e:
         logger.critical(f"[{session_id}] Pipeline Crashed: {e}")
         # Final safety net to update Redis status to FAILED
         asyncio.run(_report_failure(session_id, str(e)))
 
-async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, youtube_url: Optional[str]):
+async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, youtube_urls: List[str]):
     """
     The actual logic, running in an async context.
     """
@@ -61,7 +65,7 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
     session_dir = storage.initialize_session(session_id)
     
     # Initialize Services
-    transcriber = AudioTranscriber(model_size="large-v3" if mode == IntelligenceMode.DEEP else "distil-large-v3")
+    transcriber = AudioTranscriber(model_size="large-v3" if mode == IntelligenceMode.DEEP else "distil-small.en")
     pdf_parser = PDFParser()
     docx_parser = DocxParser()
     pptx_parser = PptxParser()
@@ -77,40 +81,67 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
     
     try:
         # --- PHASE 2: MEDIA INGESTION (VIDEO) ---
-        if youtube_url:
+        # --- PHASE 2: MEDIA INGESTION (VIDEO) ---
+        if youtube_urls:
             # Use YouTube Transcript API directly (more reliable than yt-dlp)
-            await redis.update_progress(session_id, IngestionStatus.TRANSCRIBING, 20, "Fetching YouTube Transcript...")
+            await redis.update_progress(session_id, IngestionStatus.TRANSCRIBING, 20, "Fetching YouTube Transcripts...")
             
             from app.services.media.youtube_transcript import YouTubeTranscriptFetcher
             transcript_fetcher = YouTubeTranscriptFetcher()
-            transcript_segments = transcript_fetcher.fetch_transcript(youtube_url)
-            base_transcript_text = " ".join([seg["text"] for seg in transcript_segments])
             
-            logger.info(f"[{session_id}] Fetched {len(transcript_segments)} transcript segments from YouTube")
-            
-            # Vectorize the Transcript Segments directly to preserve timestamps
-            # This is critical for "Strict Citations" [Video 12:45]
-            video_chunks = []
-            for seg in transcript_segments:
-                video_chunks.append({
-                    "id": str(uuid.uuid4()),
-                    "text": seg["text"],
-                    "metadata": {
-                        "source": "video",
-                        "type": "youtube",
-                        "timestamp": f"{int(seg['start']//60)}:{int(seg['start']%60):02d}", # "12:45" format
-                        "start_seconds": seg['start'],
-                        "end_seconds": seg['end']
-                    }
-                })
-            
-            if video_chunks:
-                vector_db.add_documents(session_id, video_chunks)
+            for url in youtube_urls:
+                try:
+                    logger.info(f"[{session_id}] Processing YouTube URL: {url}")
+                    transcript_segments = transcript_fetcher.fetch_transcript(url)
+                    
+                    # Accumulate base text for synthesis
+                    segment_text = " ".join([seg["text"] for seg in transcript_segments])
+                    base_transcript_text += segment_text + " "
+                    
+                    logger.info(f"[{session_id}] Fetched {len(transcript_segments)} segments from {url}")
+                    
+                    # Vectorize the Transcript Segments directly to preserve timestamps
+                    video_chunks = []
+                    for seg in transcript_segments:
+                        video_chunks.append({
+                            "id": str(uuid.uuid4()),
+                            "text": seg["text"],
+                            "metadata": {
+                                "source": "video",
+                                "type": "youtube",
+                                "url": url,
+                                "timestamp": f"{int(seg['start']//60)}:{int(seg['start']%60):02d}", # "12:45" format
+                                "start_seconds": seg['start'],
+                                "end_seconds": seg['end']
+                            }
+                        })
+                    
+                    if video_chunks:
+                        vector_db.add_documents(session_id, video_chunks)
+                        
+                except Exception as e:
+                    logger.error(f"Failed to process YouTube URL {url}: {e}")
+                    # Decide: fail hard or continue? 
+                    # For now, we log and continue to allow partial success.
 
         # --- PHASE 3: DOCUMENT PARSING (PDF/DOCX/PPTX) ---
         await redis.update_progress(session_id, IngestionStatus.OCR_PROCESSING, 40, "Reading Documents & Charts...")
         
         uploaded_files = storage.list_files(session_id, "uploads")
+        logger.info(f"[{session_id}] Found {len(uploaded_files)} files in uploads directory:")
+        for f in uploaded_files:
+            logger.info(f"[{session_id}]   - {f.name} ({f.suffix})")
+        
+        if not uploaded_files and not youtube_urls:
+            raise RuntimeError("No content found to synthesize! Please upload a PDF or Video.")
+        
+        # Image-first Processing (JPEG, PNG, WEBP, SVG)
+        image_files = [f for f in uploaded_files if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp', '.svg']]
+        for img_path in image_files:
+            logger.info(f"[{session_id}] Processing image: {img_path.name}")
+            # Placeholder for actual image processing logic
+            # For now, we'll just log it and move on.
+            # In a real scenario, this would involve OCR or image captioning.
         
         for file_path in uploaded_files:
             ext = file_path.suffix.lower()
@@ -124,7 +155,7 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
             elif ext == ".pptx":
                 file_chunks = await pptx_parser.parse(session_id, file_path, session_dir / "processed")
             else:
-                continue # Skip non-document files (video/audio handled/skipped)
+                continue # Skip unrecognized files
             
             # Vectorize
             for i, chunk_text in enumerate(file_chunks):

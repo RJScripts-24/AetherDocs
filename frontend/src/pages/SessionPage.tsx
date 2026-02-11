@@ -4,7 +4,7 @@ import { SessionInputs } from '../components/session/SessionInputs';
 import { IntelligenceConfig } from '../components/session/IntelligenceConfig';
 import { Footer } from '../components/Footer';
 import { useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { AetherDocsClient } from '../api/client';
 import { toast } from 'sonner';
 
@@ -20,17 +20,37 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
 
   // Shared state for uploaded files
   const [documentFiles, setDocumentFiles] = useState<string[]>([]);
-  const [mediaFiles, setMediaFiles] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<string[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
-  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeUrls, setYoutubeUrls] = useState<string[]>([]);
+
+  const sessionInitRef = useRef(false);
 
   useEffect(() => {
+    if (sessionInitRef.current) return; // Prevent double-init from StrictMode
+    sessionInitRef.current = true;
+
     const initSession = async () => {
       try {
-        const response = await AetherDocsClient.startSession();
-        setSessionId(response.session_id);
-        console.log('Session initialized:', response.session_id);
+        // Try to restore session from localStorage first
+        const savedSessionId = localStorage.getItem('aetherdocs_session_id');
+        const savedDocuments = localStorage.getItem('aetherdocs_documents');
+        const savedMedia = localStorage.getItem('aetherdocs_media');
+        const savedImages = localStorage.getItem('aetherdocs_images');
+
+        if (savedSessionId) {
+          // Restore existing session
+          console.log('[Session] Restoring session:', savedSessionId);
+          setSessionId(savedSessionId);
+          if (savedDocuments) setDocumentFiles(JSON.parse(savedDocuments));
+          if (savedImages) setImageFiles(JSON.parse(savedImages));
+        } else {
+          // Create new session
+          const response = await AetherDocsClient.startSession();
+          console.log('[Session] Created new session:', response.session_id);
+          setSessionId(response.session_id);
+          localStorage.setItem('aetherdocs_session_id', response.session_id);
+        }
       } catch (error) {
         console.error('Failed to initialize session:', error);
         toast.error('Failed to initialize session. Please refresh the page.');
@@ -40,6 +60,39 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
     initSession();
   }, []);
 
+  // Persist file lists to localStorage
+  useEffect(() => {
+    if (documentFiles.length > 0) {
+      localStorage.setItem('aetherdocs_documents', JSON.stringify(documentFiles));
+    }
+  }, [documentFiles]);
+
+
+
+  useEffect(() => {
+    if (imageFiles.length > 0) {
+      localStorage.setItem('aetherdocs_images', JSON.stringify(imageFiles));
+    }
+  }, [imageFiles]);
+
+  const clearSession = () => {
+    // Clear localStorage
+    localStorage.removeItem('aetherdocs_session_id');
+    localStorage.removeItem('aetherdocs_documents');
+    setDocumentFiles([]);
+    setImageFiles([]);
+    setSessionId(null);
+    setYoutubeUrls([]);
+
+    // Create new session
+    AetherDocsClient.startSession().then(response => {
+      console.log('[Session] Created new session after reset:', response.session_id);
+      setSessionId(response.session_id);
+      localStorage.setItem('aetherdocs_session_id', response.session_id);
+      toast.success('Session reset successfully');
+    });
+  };
+
   const handleFileUpload = async (files: FileList | null, type: 'documents' | 'media' | 'images') => {
     if (!files || !sessionId) {
       if (!sessionId) toast.error("Session not initialized yet.");
@@ -47,20 +100,23 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
     }
 
     const fileArray = Array.from(files);
+    console.log(`[Upload] Handling ${fileArray.length} files for type: ${type}`);
 
     for (const file of fileArray) {
       try {
+        console.log(`[Upload] Starting upload for: ${file.name} (type: ${file.type})`);
         setUploadingFiles(prev => new Set(prev).add(file.name));
 
         // Upload file and get metadata from backend
         const metadata = await AetherDocsClient.uploadFile(sessionId, file);
+        console.log(`[Upload] Response metadata:`, metadata);
 
         // Categorize based on actual file type from backend, not UI input
         if (metadata.source_type === 'pdf' || metadata.source_type === 'docx' || metadata.source_type === 'pptx') {
+          console.log(`[Upload] Categorizing ${file.name} as document`);
           setDocumentFiles(prev => [...prev, file.name]);
-        } else if (metadata.source_type === 'video' || metadata.source_type === 'audio') {
-          setMediaFiles(prev => [...prev, file.name]);
         } else if (metadata.source_type === 'image') {
+          console.log(`[Upload] Categorizing ${file.name} as image`);
           setImageFiles(prev => [...prev, file.name]);
         }
 
@@ -78,6 +134,17 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
     }
   };
 
+  const handleAddYoutubeUrl = (url: string) => {
+    if (url && !youtubeUrls.includes(url)) {
+      setYoutubeUrls(prev => [...prev, url]);
+      toast.success('Added YouTube URL');
+    }
+  };
+
+  const handleRemoveYoutubeUrl = (url: string) => {
+    setYoutubeUrls(prev => prev.filter(u => u !== url));
+  };
+
   const handleSynthesize = async () => {
     if (!sessionId) {
       toast.error('No active session found.');
@@ -88,7 +155,7 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
     try {
       await AetherDocsClient.triggerSynthesis({
         session_id: sessionId,
-        youtube_url: youtubeUrl || undefined
+        youtube_urls: youtubeUrls.length > 0 ? youtubeUrls : undefined
       });
       toast.success('Synthesis started!');
 
@@ -101,6 +168,12 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
             clearInterval(pollInterval);
             setIsSynthesizing(false);
             toast.success('Synthesis completed!');
+
+            // Clear session data for next time
+            localStorage.removeItem('aetherdocs_session_id');
+            localStorage.removeItem('aetherdocs_documents');
+            localStorage.removeItem('aetherdocs_images');
+
             navigate('/common-book', { state: { sessionId } });
           } else if (status.status === 'failed') {
             clearInterval(pollInterval);
@@ -172,8 +245,10 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
           <TopUploadPanel
             isDarkMode={isDarkMode}
             documentFiles={documentFiles}
-            mediaFiles={mediaFiles}
+            mediaFiles={[]}
             imageFiles={imageFiles}
+            youtubeUrls={youtubeUrls}
+            onRemoveYoutubeUrl={handleRemoveYoutubeUrl}
             uploadingFiles={uploadingFiles}
           />
 
@@ -182,11 +257,23 @@ export function SessionPage({ isDarkMode, toggleTheme }: SessionPageProps) {
               isDarkMode={isDarkMode}
               sessionId={sessionId}
               onFileUpload={handleFileUpload}
-              youtubeUrl={youtubeUrl}
-              onYoutubeChange={setYoutubeUrl}
+              onAddYoutubeUrl={handleAddYoutubeUrl}
             />
             <IntelligenceConfig isDarkMode={isDarkMode} />
           </div>
+
+          {/* Clear Session Button */}
+          <button
+            onClick={clearSession}
+            className="w-full py-3 rounded-lg text-sm transition-all mt-6"
+            style={{
+              backgroundColor: 'transparent',
+              border: `1px solid ${isDarkMode ? 'rgba(162, 123, 92, 0.3)' : 'rgba(63, 79, 68, 0.3)'}`,
+              color: isDarkMode ? '#DCD7C9' : '#2C3930',
+            }}
+          >
+            Clear Session & Start Fresh
+          </button>
 
           <button
             onClick={handleSynthesize}

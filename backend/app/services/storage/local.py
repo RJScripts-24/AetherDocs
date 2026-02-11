@@ -56,16 +56,28 @@ class LocalStorageManager:
         target_path = session_dir / "uploads" / file.filename
 
         try:
+            # Ensure we start from the beginning
+            await file.seek(0)
+            
             with open(target_path, "wb") as buffer:
                 # Read in chunks to avoid memory spikes with large videos
                 while content := await file.read(1024 * 1024):  # 1MB chunks
                     buffer.write(content)
             
-            logger.info(f"[{session_id}] File saved: {file.filename}")
+            # Verify file integrity
+            file_size = target_path.stat().st_size
+            if file_size == 0:
+                target_path.unlink() # Delete 0-byte file
+                logger.warning(f"[{session_id}] Uploaded file {file.filename} was empty.")
+                raise ValueError(f"File {file.filename} is empty (0 bytes).")
+            
+            logger.info(f"[{session_id}] File saved: {file.filename} ({round(file_size / (1024 * 1024), 2)} MB)")
             return target_path
             
         except Exception as e:
-            logger.error(f"[{session_id}] Failed to save upload: {e}")
+            logger.error(f"[{session_id}] Failed to save upload {file.filename}: {e}")
+            if "empty" in str(e):
+                raise e # Propagate ValueError
             raise IOError(f"Could not save file {file.filename}")
 
     def get_path(self, session_id: UUID, filename: str, folder: str = "uploads") -> Optional[Path]:

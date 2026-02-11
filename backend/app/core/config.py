@@ -1,7 +1,16 @@
 import os
-from typing import Optional
+import logging
 from pathlib import Path
+from typing import Optional
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+# --- Load .env BEFORE the Settings class is created ---
+# This ensures os.getenv() calls in field defaults pick up
+# the values from .env, and the Celery worker (which doesn't
+# get --env-file like uvicorn) also has access to the env vars.
+_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(_env_path)
 
 class Settings(BaseSettings):
     """
@@ -15,14 +24,13 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # --- Security & CORS ---
-    # In production, this should be a specific domain (e.g., https://aetherdocs.com)
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000", "*"]
 
     # --- Infrastructure (Docker Service Names) ---
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")
     
     CHROMA_HOST: str = os.getenv("CHROMA_HOST", "chromadb")
-    CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", 8000))
+    CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", "8000"))
 
     # --- Intelligence Keys ---
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
@@ -32,17 +40,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
     # --- The "Burner" Storage ---
-    # This is the root folder where all session data lives before deletion
     TEMP_DIR: str = os.getenv("TEMP_DIR", "/tmp/aether_workspace")
     
     # --- Model Caching ---
-    # Where Whisper weights are stored (mounted volume)
     WHISPER_CACHE_DIR: str = os.getenv("WHISPER_CACHE_DIR", "/app/models_cache/whisper")
 
     class Config:
         case_sensitive = True
-        # If .env exists (local dev), load it. 
-        # In Docker, env vars are injected directly.
         env_file = ".env"
 
 # Instantiate global settings object
@@ -50,5 +54,4 @@ settings = Settings()
 
 # Validation Check at Startup
 if not settings.GROQ_API_KEY:
-    import logging
     logging.warning("⚠️ GROQ_API_KEY is missing! LLM synthesis features will fail.")

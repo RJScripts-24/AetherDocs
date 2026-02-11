@@ -39,6 +39,9 @@ async def upload_file(
             source_type=source_type
         )
         
+    except ValueError as ve:
+        logger.warning(f"Upload rejected: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail="File upload failed")
@@ -52,10 +55,11 @@ async def trigger_synthesis(payload: TriggerSynthesisRequest):
     
     # Send to Celery
     # Note: run_ingestion_pipeline expects string args for UUID/Enums to be safe
+    # Pass list of strings for URLs
     run_ingestion_pipeline.delay(
         str(payload.session_id), 
         payload.mode.value, 
-        str(payload.youtube_url) if payload.youtube_url else None
+        [str(url) for url in payload.youtube_urls]
     )
     
     return {"message": "Ingestion pipeline queued", "status": "queued"}
