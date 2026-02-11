@@ -49,10 +49,21 @@ class LLMClient:
     ) -> str:
         """
         Generates text using the specified Llama-3 model.
-        Includes exponential backoff for rate limits.
+        Includes exponential backoff for rate limits and TPM limits.
         """
         model = self._get_model_name(mode)
         max_retries = 5
+        
+        # Cap max_tokens to stay within Groq free-tier TPM (6000 tokens/min)
+        # Reserve tokens for input — cap output at 4000 tokens max
+        safe_max_tokens = min(max_tokens, 4000)
+        
+        # Auto-truncate prompt if it's too large (~4 chars per token rough estimate)
+        # Keep input under ~2000 tokens (8000 chars) so input+output < 6000 TPM
+        max_prompt_chars = 8000
+        if len(user_prompt) > max_prompt_chars:
+            logger.warning(f"Prompt too large ({len(user_prompt)} chars). Truncating to {max_prompt_chars} chars.")
+            user_prompt = user_prompt[:max_prompt_chars] + "\n\n[Content truncated for processing limits]"
         
         for attempt in range(max_retries):
             try:
@@ -69,7 +80,7 @@ class LLMClient:
                     ],
                     model=model,
                     temperature=temperature,
-                    max_tokens=max_tokens,
+                    max_tokens=safe_max_tokens,
                     top_p=1,
                     stop=None,
                     stream=False,
@@ -81,13 +92,20 @@ class LLMClient:
                 wait_time = (2 ** attempt) * 2  # 2s, 4s, 8s, 16s, 32s
                 logger.warning(f"Groq Rate Limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
                 await asyncio.sleep(wait_time)
-                
+            
             except APIError as e:
-                logger.error(f"Groq API Error: {e}")
-                raise RuntimeError(f"LLM Generation failed: {e}")
+                error_str = str(e)
+                # Treat 413 (TPM exceeded) as a retryable rate limit
+                if "413" in error_str or "rate_limit" in error_str.lower() or "too large" in error_str.lower():
+                    wait_time = (2 ** attempt) * 10  # 10s, 20s, 40s, 80s — longer waits for TPM
+                    logger.warning(f"Groq TPM limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"Groq API Error: {e}")
+                    raise RuntimeError(f"LLM Generation failed: {e}")
         
         # All retries exhausted
-        logger.error("Groq Rate Limit: All retries exhausted. Returning empty.")
+        logger.error("Groq Rate/TPM Limit: All retries exhausted. Returning empty.")
         return ""
 
     async def generate_summary(self, text: str, mode: IntelligenceMode) -> str:
@@ -109,5 +127,6 @@ class LLMClient:
             system_prompt=system,
             user_prompt=safe_text,
             mode=mode,
-            temperature=0.3 # Lower temp for more factual summaries
+            temperature=0.3,  # Lower temp for more factual summaries
+            max_tokens=4096   # Detailed summary to avoid losing nuance
         )

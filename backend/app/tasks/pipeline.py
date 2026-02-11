@@ -202,12 +202,23 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
         # --- PHASE 4: SYNTHESIS (FUSION LOGIC) ---
         await redis.update_progress(session_id, IngestionStatus.SYNTHESIZING, 70, "Running Smart Deduplication...")
         
-        if not base_transcript_text and not secondary_text_chunks:
+        if not base_transcript_text and not secondary_text_chunks and not image_descriptions:
             raise ValueError("No content found to synthesize! Please upload a PDF or Video.")
 
         # If only PDF provided, treat PDF as base. If only Video, treat Video as base.
         if not base_transcript_text:
             base_transcript_text = " ".join(secondary_text_chunks[:5]) # Hack: use first few pages as base
+        
+        # === DETAILED LOGGING: Track what goes into fusion ===
+        logger.info(f"[{session_id}] ========== FUSION INPUT SUMMARY ==========")
+        logger.info(f"[{session_id}] Base transcript text: {len(base_transcript_text)} chars")
+        logger.info(f"[{session_id}] Secondary text chunks: {len(secondary_text_chunks)} chunks")
+        for i, chunk in enumerate(secondary_text_chunks):
+            logger.info(f"[{session_id}]   Chunk {i}: {len(chunk)} chars — {chunk[:80]}...")
+        logger.info(f"[{session_id}] Image descriptions: {len(image_descriptions)} images")
+        for i, desc in enumerate(image_descriptions):
+            logger.info(f"[{session_id}]   Image {i}: {len(desc)} chars — {desc[:80]}...")
+        logger.info(f"[{session_id}] ==========================================")
         
         final_manuscript = await fusion_engine.generate_common_book(
             session_id, 
