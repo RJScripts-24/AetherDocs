@@ -43,7 +43,8 @@ class FusionEngine:
         session_id: UUID, 
         transcript_text: str, 
         pdf_text_chunks: List[str],
-        mode: IntelligenceMode
+        mode: IntelligenceMode,
+        image_descriptions: List[str] = None
     ) -> str:
         """
         Orchestrates the creation of the Unified Study Guide.
@@ -90,7 +91,8 @@ class FusionEngine:
         final_manuscript = await self._synthesize_final_narrative(
             base_layer, 
             unique_insights, 
-            mode
+            mode,
+            image_descriptions=image_descriptions or []
         )
         
         return final_manuscript
@@ -132,21 +134,36 @@ class FusionEngine:
         self, 
         base_text: str, 
         insights: List[str], 
-        mode: IntelligenceMode
+        mode: IntelligenceMode,
+        image_descriptions: List[str] = None
     ) -> str:
         """
         Merges the skeleton and the extracted organs into a body.
+        Image descriptions are injected as a guaranteed section.
         """
         secondary_content = "\n".join(insights)
+        
+        # Build image section if any descriptions exist
+        image_section = ""
+        if image_descriptions:
+            image_content = "\n\n".join(image_descriptions)
+            image_section = (
+                "Source 3 (Visual Data from Images/Diagrams): "
+                "You MUST include a dedicated section for visual analysis. "
+                "Describe and integrate these image findings.\n"
+                f"{image_content}\n\n"
+            )
         
         prompt = (
             "You are an expert textbook editor. Create a 'Common Book' study guide.\n"
             "Source 1 (Narrative Flow): Use this for the structure.\n"
-            f"{base_text[:15000]}...\n\n" # Truncate if necessary or use RAG if huge
+            f"{base_text[:15000]}...\n\n"
             "Source 2 (Deep Dives/Formulas): Integrate these missing details naturally.\n"
             f"{secondary_content}\n\n"
+            f"{image_section}"
             "CRITICAL INSTRUCTION: You MUST include video timestamps (e.g., [12:45]) for key definitions, "
             "formulas, and important concepts. The base text contains these timestamps.\n"
+            "If image/visual data is provided, create a dedicated '## Visual Analysis' section in the output.\n"
             "Output formatted in Markdown with clear headers."
         )
         

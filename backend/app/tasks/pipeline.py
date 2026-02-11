@@ -138,6 +138,7 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
         
         # Image-first Processing (JPEG, PNG, WEBP, SVG)
         image_describer = ImageDescriber()
+        image_descriptions = []  # Collected separately — bypasses delta analysis in fusion
         image_files = [f for f in uploaded_files if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp', '.svg']]
         for img_path in image_files:
             logger.info(f"[{session_id}] Processing image with Llama Vision: {img_path.name}")
@@ -157,8 +158,11 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
                 )
                 vector_db.add_documents(session_id, image_chunks)
                 
-                # Also feed into secondary text for fusion synthesis
-                secondary_text_chunks.append(description)
+                # Collect image descriptions separately (NOT in secondary_text_chunks)
+                # so they bypass the fusion engine's delta filter
+                if "[Description Unavailable" not in description and "[Error" not in description:
+                    image_descriptions.append(f"[Image: {img_path.name}]\n{description}")
+                    logger.info(f"[{session_id}] Image description captured for fusion: {img_path.name}")
                 
             except Exception as img_err:
                 logger.error(f"[{session_id}] Image analysis failed for {img_path.name}: {img_err}")
@@ -209,7 +213,8 @@ async def _execute_pipeline_async(session_id: UUID, mode: IntelligenceMode, yout
             session_id, 
             base_transcript_text, 
             secondary_text_chunks, 
-            mode
+            mode,
+            image_descriptions=image_descriptions
         )
 
         # --- PHASE 5: ARTIFACT GENERATION ---
